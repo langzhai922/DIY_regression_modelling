@@ -1,5 +1,12 @@
 ### DIY Modelling
 To run, download the RMD and both CSV files, and place in the same folder. Then run the RMD file.
+.
+.
+.
+.
+.
+.
+.
 
 For this project, I decided to dive deep into how different optimisation techniques worked, specifically looking at the Least Squares and Maximum Likelihood. The purpose of this is to better understand how different optimisation techniques are used to find the best estimates for a given model.
 
