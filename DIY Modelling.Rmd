@@ -1,0 +1,237 @@
+---
+title: "399wk8hihiC"
+author: "Augustus Chu"
+date: '2022-09-22'
+output: html_document
+---
+```{r setup, include=FALSE} 
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+```
+
+```{r}
+library(tidyverse)
+tempdata <- read.csv("GlobalTemperatureAnomaly.csv")
+wombatdata <- read.csv("Wombats.csv")
+```
+
+### Least Squares Model
+```{r}
+# Least Squares function 1
+leastSquares.func <- function(dat, xvar="x", yvar="y", startvec=c(0,0)){
+        dat.x <- dat[,xvar]
+        dat.y <- dat[,yvar]
+        objective.func <- function(pars){
+                a <- pars[1]
+                b <- pars[2]
+                fittedValues <- a + b*dat.x
+                sumSquares <- sum((dat.y - fittedValues)^2, na.rm=TRUE)
+                if(!is.finite(sumSquares)) {
+                  sumSquares <- 694206942069420
+                }
+                return(sumSquares)
+        }
+        leastSquares.fit <- nlm(f=objective.func, p=startvec)
+        return(leastSquares.fit)
+}
+```
+
+```{r}
+# Least Squares function 2
+leastSquaresBootstrap.func <- function(dat, xvar="x", yvar="y", startvec=c(0,0), nboot=100){
+        ndat <- nrow(dat)
+        boot.res <- data.frame(bootrep=1:nboot, LS.a=rep(NA, nboot), LS.b=rep(NA, nboot))
+        for(i in 1:nboot){
+                resampleRows <- sample(1:ndat, size=ndat, replace=TRUE)
+                dat.boot <- dat[resampleRows, ]
+                LSfit.boot <- leastSquares.func(dat.boot, xvar, yvar, startvec)
+                boot.res$LS.a[i] <- LSfit.boot$estimate[1]
+                boot.res$LS.b[i] <- LSfit.boot$estimate[2]
+        }
+
+        se.a.LS <- sd(boot.res$LS.a)
+        se.b.LS <- sd(boot.res$LS.b)
+        CI.a.LS <- quantile(boot.res$LS.a, probs=c(0.025, 0.975))
+        CI.b.LS <- quantile(boot.res$LS.b, probs=c(0.025, 0.975))
+        return(list(stderror=c(LS.a=se.a.LS, LS.b=se.b.LS), CI.a.LS=CI.a.LS, CI.b.LS=CI.b.LS))
+}
+```
+
+```{r}
+# comparing least squares functions 1 and 2 with standard R lm func
+LS.mod <- leastSquares.func(tempdata, "CO2.ppm", "GlobalTempAnomaly.hC", c(0,0))
+LS.BS <- leastSquaresBootstrap.func(tempdata, "CO2.ppm", "GlobalTempAnomaly.hC")
+test <- lm(GlobalTempAnomaly.hC ~ CO2.ppm, data = tempdata)
+```
+
+```{r}
+# compare coefficients/estimates
+LS.mod$estimate
+coef(test)
+```
+
+```{r}
+# compare confidence interval and standard error
+LS.BS$CI.a.LS
+LS.BS$CI.b.LS
+confint(test)
+```
+
+### Maximum Likelihood Model
+```{r}
+# Maximum Likelihood function 1
+maxLikelihood.func <- function(dat, xvar="x", yvar="y", startvec=c(0,0,5)){
+        dat.x <- dat[,xvar]
+        dat.y <- dat[,yvar]
+        objective.func <- function(pars){
+                a <- pars[1]
+                b <- pars[2]
+                sigma <- pars[3]
+                fittedValues <- a + b*dat.x
+                maxLike <- -sum(dnorm(dat.y, mean = fittedValues, sd = sigma, log = TRUE))
+                if(!is.finite(maxLike)) {
+                  maxLike <- 694206942069420
+                }
+                return(maxLike)
+        }
+        maxLikelihood.fit <- nlm(f=objective.func, p=startvec)
+        return(maxLikelihood.fit)
+}
+```
+
+```{r}
+# Maximum Likelihood function 2
+maxLikelihoodBootstrap.func <- function(dat, xvar="x", yvar="y", startvec=c(0,0,5), nboot=100){
+        ndat <- nrow(dat)
+        boot.res <- data.frame(bootrep=1:nboot, ML.a=rep(NA, nboot), ML.b=rep(NA, nboot))
+        for(i in 1:nboot){
+                resampleRows <- sample(1:ndat, size=ndat, replace=TRUE)
+                dat.boot <- dat[resampleRows, ]
+                MLfit.boot <- maxLikelihood.func(dat.boot, xvar, yvar, startvec)
+                boot.res$ML.a[i] <- MLfit.boot$estimate[1]
+                boot.res$ML.b[i] <- MLfit.boot$estimate[2]
+        }
+        se.a.ML <- sd(boot.res$ML.a)
+        se.b.ML <- sd(boot.res$ML.b)
+        CI.a.ML <- quantile (boot.res$ML.a, probs=c(0.025, 0.975))
+        CI.b.ML <- quantile(boot.res$ML.b, probs=c(0.025, 0.975))
+        return(list(stderror=c(ML.a=se.a.ML, ML.b=se.b.ML), CI.a.ML=CI.a.ML, CI.b.ML=CI.b.ML))
+}
+```
+
+```{r}
+# comparing max likelihood functions 1 and 2 with standard R lm func
+ML.mod <- maxLikelihood.func(tempdata, "CO2.ppm", "GlobalTempAnomaly.hC")
+ML.BS <- maxLikelihoodBootstrap.func(tempdata, "CO2.ppm", "GlobalTempAnomaly.hC")
+test2 <- lm(GlobalTempAnomaly.hC ~ CO2.ppm, data = tempdata)
+```
+
+```{r}
+# compare coefficients/estimates
+# remove the third irrelevant estimate
+ML.mod$estimate[-3]
+coef(test2)
+```
+
+```{r}
+# compare confidence interval and standard error
+ML.BS$CI.a.ML
+ML.BS$CI.b.ML
+confint(test2)
+```
+
+### Poisson Model
+```{r}
+# creating poisson model for wombat data
+wb.poisson <- glm(nWombats ~ nBurrows, family=poisson(link=log), data = wombatdata)
+wb.qpoisson <- glm(nWombats ~ nBurrows, family=quasipoisson(link=log), data = wombatdata)
+```
+
+```{r}
+# Maximum Likelihood for poisson function 1
+MLPoisson.func <- function(dat, xvar="x", yvar="y", startvec=c(0,0)){
+        dat.x <- dat[,xvar]
+        dat.y <- dat[,yvar]
+        objective.func <- function(pars){
+                a <- pars[1]
+                b <- pars[2]
+                fittedValues <- exp(a + b*dat.x)
+                pois <- -sum(dpois(dat.y, lambda = fittedValues, log = TRUE))
+                if(!is.finite(pois)) {
+                  pois <- 694206942069420
+                }
+                return(pois)
+        }
+        MLPoisson.fit <- nlm(f=objective.func, p=startvec)
+        return(MLPoisson.fit)
+}
+
+MLPoisson.func(wombatdata, "nBurrows", "nWombats")
+```
+
+```{r}
+# Maximum Likelihood for poisson function 2
+MLPoissonBootstrap.func <- function(dat, xvar="x", yvar="y", startvec=c(0,0), nboot=100){
+        ndat <- nrow(dat)
+        boot.res <- data.frame(bootrep=1:nboot, ML.a=rep(NA, nboot), ML.b=rep(NA, nboot))
+        for(i in 1:nboot){
+                resampleRows <- sample(1:ndat, size=ndat, replace=TRUE)
+                dat.boot <- dat[resampleRows, ]
+                MLPfit.boot <- MLPoisson.func(dat.boot, xvar, yvar, startvec)
+                boot.res$MLP.a[i] <- MLPfit.boot$estimate[1]
+                boot.res$MLP.b[i] <- MLPfit.boot$estimate[2]
+        }
+
+        se.a.MLP <- sd(boot.res$MLP.a)
+        se.b.MLP <- sd(boot.res$MLP.b)
+        CI.a.MLP <- quantile(boot.res$MLP.a, probs=c(0.025, 0.975))
+        CI.b.MLP <- quantile(boot.res$MLP.b, probs=c(0.025, 0.975))
+        return(list(stderror=c(MLP.a=se.a.MLP, MLP.b=se.b.MLP), CI.a.MLP=CI.a.MLP, CI.b.MLP=CI.b.MLP))
+}
+```
+
+```{r}
+# comparing poisson/quasipoisson glm with our MLE functions
+wb.poisson <- glm(nWombats ~ nBurrows, family=poisson(link=log), data = wombatdata)
+wb.qpoisson <- glm(nWombats ~ nBurrows, family=quasipoisson(link=log), data = wombatdata)
+MLE.wombat <- MLPoisson.func(wombatdata, "nBurrows", "nWombats")
+MLE.BS.wombat <- MLPoissonBootstrap.func(wombatdata, "nBurrows", "nWombats")
+```
+
+```{r}
+# POISSON COMPARISON
+# compare coefficients/estimates
+MLE.wombat$estimate[-3]
+coef(wb.poisson)
+```
+
+```{r}
+# POISSON COMPARISON
+# compare standard error
+MLE.BS.wombat$stderror
+coef(summary(wb.poisson))[, "Std. Error"]
+# compare confidence interval
+MLE.BS.wombat$CI.a.MLP
+MLE.BS.wombat$CI.b.MLP
+confint(wb.poisson)
+```
+
+```{r}
+# QUASIPOISSON COMPARISON
+# compare standard error
+MLE.BS.wombat$stderror
+coef(summary(wb.qpoisson))[, "Std. Error"]
+# compare confidence interval
+MLE.BS.wombat$CI.a.MLP
+MLE.BS.wombat$CI.b.MLP
+confint(wb.qpoisson)
+```
+
+From our maximum likelihood model, we observe standard errors of 0.1869 for the intercept and 0.0048 for the coefficient b1. The poisson model observed standard errors of 0.1409 for the intercept and 0.0040 for the coefficient b1, while the quasipoisson model observed standard errors of 0.1832 for the intercept and 0.0052 for the coefficient b1.
+
+We see that the quasipoisson model has closer standard errors to our MLE model. This may because in the wombatdata, the two columns we used (nBurrows & nWombats) showed a variance greater than the mean. Given this situation, a Quasi-Poisson model will generally be more appropriate, as it assumes that the variance is a linear function of the mean. Therefore, it will produce a smaller standard error which is very close to our MLE model. The Poisson model assumes that the variance is equal to the mean, which is not always a fair assumption.
+
+```{r}
+var(wombatdata$nBurrows)
+mean(wombatdata$nBurrows)
+```
+
